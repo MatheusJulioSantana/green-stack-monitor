@@ -9,21 +9,25 @@ what was considered and rejected, and what the known trade-offs are.
 ## Dependency Graph
 
 ```
-cmd/server          → (composition root, no business logic)
+cmd/server               → (composition root, no business logic)
     │
-    ├── internal/config         → stdlib only
-    ├── internal/domain         → stdlib only   ← zero external deps
-    ├── internal/estimator      → domain
-    ├── internal/cache          → go-redis (optional)
-    ├── internal/repository     → domain
-    ├── internal/middleware     → domain, estimator, otel/metric
-    ├── internal/service        → domain, cache
-    ├── internal/handler        → domain, middleware
-    └── pkg/badge               → stdlib only
+    ├── internal/config        → stdlib only
+    ├── internal/cache         → go-redis (optional)
+    ├── internal/repository    → pkg/domain
+    ├── internal/service       → pkg/domain, internal/cache
+    ├── internal/handler       → pkg/domain, pkg/middleware
+    │
+    ├── pkg/domain             → stdlib only   ← importável externamente, zero deps
+    ├── pkg/estimator          → pkg/domain    ← importável externamente
+    ├── pkg/middleware         → pkg/domain, pkg/estimator, otel/metric
+    └── pkg/badge              → stdlib only   ← importável externamente
 ```
 
-The `domain` package is the dependency floor — nothing there imports anything
-outside the Go standard library.
+**Regra de visibilidade:**
+- `pkg/` — API pública da lib. Qualquer projeto Go pode importar.
+- `internal/` — detalhes do servidor. O compilador bloqueia importação externa.
+
+`pkg/domain` é o dependency floor — zero imports externos.
 
 ---
 

@@ -41,14 +41,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/yourhandle/green-stack-monitor/internal/cache"
-	"github.com/yourhandle/green-stack-monitor/internal/config"
-	"github.com/yourhandle/green-stack-monitor/internal/estimator"
-	"github.com/yourhandle/green-stack-monitor/internal/handler"
-	"github.com/yourhandle/green-stack-monitor/internal/middleware"
-	"github.com/yourhandle/green-stack-monitor/internal/repository"
-	"github.com/yourhandle/green-stack-monitor/internal/service"
-	"github.com/yourhandle/green-stack-monitor/pkg/badge"
+	"github.com/matheusjuliosantana/green-stack-monitor/internal/cache"
+	"github.com/matheusjuliosantana/green-stack-monitor/internal/config"
+	"github.com/matheusjuliosantana/green-stack-monitor/pkg/estimator"
+	"github.com/matheusjuliosantana/green-stack-monitor/internal/handler"
+	"github.com/matheusjuliosantana/green-stack-monitor/pkg/middleware"
+	"github.com/matheusjuliosantana/green-stack-monitor/internal/repository"
+	"github.com/matheusjuliosantana/green-stack-monitor/internal/service"
+	"github.com/matheusjuliosantana/green-stack-monitor/pkg/badge"
 )
 
 func main() {

@@ -17,7 +17,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/yourhandle/green-stack-monitor/internal/domain"
+	"github.com/matheusjuliosantana/green-stack-monitor/pkg/domain"
 )
 
 // App holds the full runtime configuration of the server.

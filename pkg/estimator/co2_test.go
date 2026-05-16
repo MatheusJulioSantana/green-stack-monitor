@@ -3,8 +3,8 @@ package estimator_test
 import (
 	"testing"
 
-	"github.com/yourhandle/green-stack-monitor/internal/domain"
-	"github.com/yourhandle/green-stack-monitor/internal/estimator"
+	"github.com/matheusjuliosantana/green-stack-monitor/pkg/domain"
+	"github.com/matheusjuliosantana/green-stack-monitor/pkg/estimator"
 )
 
 // referenceConfig represents a realistic cloud vCPU in Brazil.

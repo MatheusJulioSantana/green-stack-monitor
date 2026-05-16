@@ -8,9 +8,9 @@ import (
 
 	"go.opentelemetry.io/otel/metric/noop"
 
-	"github.com/yourhandle/green-stack-monitor/internal/domain"
-	"github.com/yourhandle/green-stack-monitor/internal/estimator"
-	"github.com/yourhandle/green-stack-monitor/internal/middleware"
+	"github.com/matheusjuliosantana/green-stack-monitor/pkg/domain"
+	"github.com/matheusjuliosantana/green-stack-monitor/pkg/estimator"
+	"github.com/matheusjuliosantana/green-stack-monitor/pkg/middleware"
 )
 
 // --- workerRepo -------------------------------------------------------------
@@ -47,7 +47,7 @@ func (r *workerRepo) waitCount(n int, timeout time.Duration) bool {
 
 // --- helper -----------------------------------------------------------------
 
-func newTestWorker(t testing.TB, repo domain.EcoRepository, cfg middleware.WorkerConfig) *middleware.Worker {
+func newTestWorker(t testing.TB, repo domain.TraceWriter, cfg middleware.WorkerConfig) *middleware.Worker {
 	t.Helper()
 	est, err := estimator.New(domain.CO2Config{
 		TDPWatts: 4.0, PUE: 1.2,

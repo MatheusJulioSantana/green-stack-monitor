@@ -25,7 +25,7 @@ import (
 
 	"go.opentelemetry.io/otel/metric"
 
-	"github.com/yourhandle/green-stack-monitor/internal/estimator"
+	"github.com/matheusjuliosantana/green-stack-monitor/pkg/estimator"
 )
 
 // ecoKey é a chave de contexto privada deste pacote.
@@ -76,7 +76,7 @@ func EcoMetrics(opts Options) func(http.Handler) http.Handler {
 	// samplerDropped: contador OTEL para requests ignoradas pelo sampler.
 	// Fica no middleware (não no worker) porque é responsabilidade do sampler.
 	// Sem este contador, SampleRate=0.1 pareceria "90% das requests sumindo".
-	meter := opts.MeterProvider.Meter("github.com/yourhandle/green-stack-monitor")
+	meter := opts.MeterProvider.Meter("github.com/matheusjuliosantana/green-stack-monitor")
 	samplerDropped, err := meter.Int64ObservableCounter(
 		"green.sampler.dropped",
 		metric.WithDescription(
@@ -141,7 +141,7 @@ func EcoMetrics(opts Options) func(http.Handler) http.Handler {
 				Path:       sanitisePath(r.URL.Path),
 				StatusCode: rw.status,
 				StartAlloc: trace.startAlloc,
-				Elapsed:    float64(time.Since(trace.startTime).Milliseconds()),
+				Elapsed:    float64(time.Since(trace.startTime).Nanoseconds()) / 1e6,
 				CacheHit:   trace.CacheHit,
 				StartedAt:  trace.startTime,
 			}

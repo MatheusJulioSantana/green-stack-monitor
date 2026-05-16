@@ -10,10 +10,9 @@ import (
 
 	"go.opentelemetry.io/otel/metric/noop"
 
-	"github.com/yourhandle/green-stack-monitor/internal/domain"
-	"github.com/yourhandle/green-stack-monitor/internal/estimator"
-	"github.com/yourhandle/green-stack-monitor/internal/middleware"
-	"github.com/yourhandle/green-stack-monitor/internal/repository"
+	"github.com/matheusjuliosantana/green-stack-monitor/pkg/domain"
+	"github.com/matheusjuliosantana/green-stack-monitor/pkg/estimator"
+	"github.com/matheusjuliosantana/green-stack-monitor/pkg/middleware"
 )
 
 // --- fakeRepo ---------------------------------------------------------------
@@ -34,7 +33,23 @@ func (f *fakeRepo) Save(_ context.Context, t domain.RequestTrace) error {
 }
 
 func (f *fakeRepo) Aggregates(_ context.Context) (domain.CacheMetrics, error) {
-	return domain.CacheMetrics{}, nil
+	// Drena o canal para contar hits e misses.
+	// Usado apenas em TestRepository_HitRate — não afeta outros testes.
+	var hits, misses uint64
+	var saved float64
+	for {
+		select {
+		case tr := <-f.last:
+			if tr.CacheHit {
+				hits++
+				saved += tr.CO2Saved
+			} else {
+				misses++
+			}
+		default:
+			return domain.CacheMetrics{Hits: hits, Misses: misses, TotalSaved: saved}, nil
+		}
+	}
 }
 
 func (f *fakeRepo) waitSaved(n int, timeout time.Duration) bool {
@@ -174,7 +189,6 @@ func TestEcoMetrics_MarkCacheHit(t *testing.T) {
 	h := middleware.EcoMetrics(middleware.Options{
 		Estimator: est, Worker: w, MeterProvider: mp, SampleRate: 1.0,
 	})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(10 * time.Millisecond)
 		middleware.MarkCacheHit(r.Context())
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -204,8 +218,9 @@ func TestEcoMetrics_MarkCacheHit_NotSampled_IsNoOp(t *testing.T) {
 
 // --- repositório ------------------------------------------------------------
 
-func TestInMemoryRepository_HitRate(t *testing.T) {
-	repo := &repository.InMemoryEcoRepository{}
+func TestRepository_HitRate(t *testing.T) {
+	// Usa fakeRepo (já definido neste arquivo) — pkg/ não depende de internal/.
+	repo := newFakeRepo()
 
 	for range 7 {
 		_ = repo.Save(context.Background(), domain.RequestTrace{CacheHit: true, CO2Saved: 0.001})

@@ -71,7 +71,7 @@ func TestResponseWriterPool_ResetOnRelease(t *testing.T) {
 
 // TestEcoTracePool_ConcurrentSafe verifica que múltiplas goroutines
 // podem usar o pool simultaneamente sem race condition.
-// Execute com: go test -race ./internal/middleware/
+// Execute com: go test -race ./pkg/middleware/
 func TestEcoTracePool_ConcurrentSafe(t *testing.T) {
 	const goroutines = 50
 	const iterations = 200

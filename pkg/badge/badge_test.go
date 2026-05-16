@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yourhandle/green-stack-monitor/pkg/badge"
+	"github.com/matheusjuliosantana/green-stack-monitor/pkg/badge"
 )
 
 // --- helpers ----------------------------------------------------------------

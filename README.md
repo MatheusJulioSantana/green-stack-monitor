@@ -3,6 +3,7 @@
 > **Because performance is the purest form of sustainability.**
 > A lightweight Go middleware to track your API's carbon footprint — in real time, with zero latency overhead.
 
+
 [![Go 1.22+](https://img.shields.io/badge/go-1.22+-00ADD8?style=flat&logo=go)](https://go.dev)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat)](LICENSE)
 
@@ -84,9 +85,9 @@ Green Stack is a standard Go middleware. Drop it into any `net/http` or `chi` st
 
 ```go
 import (
-    "github.com/yourhandle/green-stack-monitor/internal/estimator"
-    "github.com/yourhandle/green-stack-monitor/internal/middleware"
-    "github.com/yourhandle/green-stack-monitor/pkg/badge"
+    "github.com/matheusjuliosantana/green-stack-monitor/pkg/estimator"
+    "github.com/matheusjuliosantana/green-stack-monitor/pkg/middleware"
+    "github.com/matheusjuliosantana/green-stack-monitor/pkg/badge"
 )
 
 // 1. Configure the CO₂ estimator for your region and hardware.

@@ -6,7 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/yourhandle/green-stack-monitor/internal/domain"
+	"github.com/matheusjuliosantana/green-stack-monitor/pkg/domain"
 )
 
 // InMemoryEcoRepository is a thread-safe, zero-dependency implementation

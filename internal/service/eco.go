@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/yourhandle/green-stack-monitor/internal/cache"
-	"github.com/yourhandle/green-stack-monitor/internal/domain"
+	"github.com/matheusjuliosantana/green-stack-monitor/internal/cache"
+	"github.com/matheusjuliosantana/green-stack-monitor/pkg/domain"
 )
 
 const defaultTTL = 5 * time.Minute

@@ -1,4 +1,4 @@
-module github.com/yourhandle/green-stack-monitor
+module github.com/matheusjuliosantana/green-stack-monitor
 
 go 1.22
 

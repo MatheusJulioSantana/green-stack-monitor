@@ -14,8 +14,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/yourhandle/green-stack-monitor/internal/domain"
-	"github.com/yourhandle/green-stack-monitor/internal/middleware"
+	"github.com/matheusjuliosantana/green-stack-monitor/pkg/domain"
+	"github.com/matheusjuliosantana/green-stack-monitor/pkg/middleware"
 )
 
 // EcoMetricsService is the subset of EcoService the handler needs.

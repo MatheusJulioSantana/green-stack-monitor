@@ -11,8 +11,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
-	"github.com/yourhandle/green-stack-monitor/internal/domain"
-	"github.com/yourhandle/green-stack-monitor/internal/estimator"
+	"github.com/matheusjuliosantana/green-stack-monitor/pkg/domain"
+	"github.com/matheusjuliosantana/green-stack-monitor/pkg/estimator"
 )
 
 // TracePayload é o que viaja pelo canal entre o middleware e o worker.
@@ -103,7 +103,7 @@ func NewWorker(
 
 	// Meter com nome de instrumentação que identifica a lib no backend.
 	// Convenção OTEL: nome do módulo Go sem versão.
-	meter := mp.Meter("github.com/yourhandle/green-stack-monitor")
+	meter := mp.Meter("github.com/matheusjuliosantana/green-stack-monitor")
 
 	// Counters: valores que só crescem — CO₂ emitido e economizado.
 	var err error
