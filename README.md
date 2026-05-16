@@ -3,7 +3,6 @@
 > **Because performance is the purest form of sustainability.**
 > A lightweight Go middleware to track your API's carbon footprint — in real time, with zero latency overhead.
 
-[![Carbon Efficiency](https://your-host/badge)](https://github.com/yourhandle/green-stack-monitor)
 [![Go 1.22+](https://img.shields.io/badge/go-1.22+-00ADD8?style=flat&logo=go)](https://go.dev)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat)](LICENSE)
 
@@ -59,7 +58,7 @@ Green Stack makes that cost visible, per request, in real time. When your team c
 
 ```bash
 # 1. Clone
-git clone https://github.com/yourhandle/green-stack-monitor
+git clone https://github.com/matheusjuliosantana/green-stack-monitor
 cd green-stack-monitor
 
 # 2. Generate a secret (minimum 32 bytes)
