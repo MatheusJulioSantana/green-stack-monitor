@@ -131,6 +131,10 @@ func renderBadgeSVG(label, color string) string {
 	)
 }
 
+func Snapshot(est *Estimator) estimator.Snapshot {
+	return est.Snapshot()
+}
+
 // --- Middleware ---
 
 type EcoMetricsOptions = middleware.Options

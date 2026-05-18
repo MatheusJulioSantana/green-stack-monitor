@@ -20,6 +20,15 @@ const (
 	msToHours = 1.0 / 3_600_000.0
 )
 
+type Snapshot struct {
+	TotalG    float64
+	SavedG    float64
+	PerReqG   float64
+	HitRate   float64
+	Requests  int64
+	CacheHits int64
+}
+
 // Estimator converts CPU and memory usage into a CO₂ estimate.
 type Estimator struct {
 	cfg           domain.CO2Config
@@ -118,6 +127,27 @@ func (e *Estimator) GetMetrics() (domain.CacheMetrics, error) {
 		Misses:     uint64(reqs - hits),
 		TotalSaved: saved,
 	}, nil
+}
+
+func (e *Estimator) Snapshot() Snapshot {
+	n := atomic.LoadInt64(&e.totalRequests)
+	h := atomic.LoadInt64(&e.cacheHits)
+	total := atomicReadFloat64(&e.totalCO2)
+	saved := atomicReadFloat64(&e.savedCO2)
+	perReq := 0.0
+	hitRate := 0.0
+	if n > 0 {
+		perReq = total / float64(n)
+		hitRate = float64(h) / float64(n) * 100
+	}
+	return Snapshot{
+		TotalG:    total,
+		SavedG:    saved,
+		PerReqG:   perReq,
+		HitRate:   hitRate,
+		Requests:  n,
+		CacheHits: h,
+	}
 }
 
 // ─── internals ────────────────────────────────────────────────────────────────
