@@ -1,7 +1,7 @@
 package middleware
 
-// Testes do pool ficam no package interno para acessar acquireEcoTrace,
-// releaseEcoTrace, acquireResponseWriter e releaseResponseWriter diretamente.
+// Pool tests live in the internal package to access acquireEcoTrace,
+// releaseEcoTrace, acquireResponseWriter and releaseResponseWriter directly.
 
 import (
 	"net/http/httptest"
@@ -10,13 +10,13 @@ import (
 	"time"
 )
 
-// TestEcoTracePool_ResetOnRelease verifica que nenhum campo de uma request
-// anterior vaza para a próxima após release.
+// TestEcoTracePool_ResetOnRelease verifies that no field from a previous request
+// leaks into the next one after release.
 //
-// Este é o teste mais importante do pool: um campo não-resetado causaria
-// um bug silencioso e difícil de reproduzir em produção.
+// This is the most important pool test: a non-reset field would cause a silent
+// and hard to reproduce production bug.
 func TestEcoTracePool_ResetOnRelease(t *testing.T) {
-	// Adquire, popula com dados "sujos", libera.
+	// Acquire, populate with dirty data, release.
 	t1 := acquireEcoTrace()
 	t1.startAlloc = 99999
 	t1.startTime = time.Now().Add(-time.Hour)
@@ -24,28 +24,27 @@ func TestEcoTracePool_ResetOnRelease(t *testing.T) {
 	t1.sampled = true
 	releaseEcoTrace(t1)
 
-	// Adquire novamente — pode ser o mesmo objeto (pool reutilizou).
-	// Todos os campos devem estar em zero value.
+	// Acquire again; this can be the same object reused by the pool.
+	// Every field must be at its zero value.
 	t2 := acquireEcoTrace()
 	defer releaseEcoTrace(t2)
 
 	if t2.startAlloc != 0 {
-		t.Errorf("startAlloc vazou: got %d, want 0", t2.startAlloc)
+		t.Errorf("startAlloc leaked: got %d, want 0", t2.startAlloc)
 	}
 	if !t2.startTime.IsZero() {
-		t.Errorf("startTime vazou: got %v, want zero", t2.startTime)
+		t.Errorf("startTime leaked: got %v, want zero", t2.startTime)
 	}
 	if t2.CacheHit {
-		t.Error("CacheHit vazou: got true, want false")
+		t.Error("CacheHit leaked: got true, want false")
 	}
 	if t2.sampled {
-		t.Error("sampled vazou: got true, want false")
+		t.Error("sampled leaked: got true, want false")
 	}
 }
 
-// TestResponseWriterPool_ResetOnRelease verifica que status e wroteHeader
-// são resetados corretamente — evita que um 500 de uma request apareça
-// como status inicial da próxima.
+// TestResponseWriterPool_ResetOnRelease verifies that status and wroteHeader are
+// reset correctly, so one request status cannot become the next initial status.
 func TestResponseWriterPool_ResetOnRelease(t *testing.T) {
 	rec := httptest.NewRecorder()
 
@@ -59,19 +58,18 @@ func TestResponseWriterPool_ResetOnRelease(t *testing.T) {
 	defer releaseResponseWriter(rw2)
 
 	if rw2.ResponseWriter != nil {
-		t.Error("ResponseWriter não foi limpo no release")
+		t.Error("ResponseWriter was not cleared on release")
 	}
 	if rw2.status != 0 {
-		t.Errorf("status vazou: got %d, want 0", rw2.status)
+		t.Errorf("status leaked: got %d, want 0", rw2.status)
 	}
 	if rw2.wroteHeader {
-		t.Error("wroteHeader vazou: got true, want false")
+		t.Error("wroteHeader leaked: got true, want false")
 	}
 }
 
-// TestEcoTracePool_ConcurrentSafe verifica que múltiplas goroutines
-// podem usar o pool simultaneamente sem race condition.
-// Execute com: go test -race ./pkg/middleware/
+// TestEcoTracePool_ConcurrentSafe verifies that multiple goroutines can use the
+// pool concurrently without races. Run with: go test -race ./pkg/middleware/
 func TestEcoTracePool_ConcurrentSafe(t *testing.T) {
 	const goroutines = 50
 	const iterations = 200
@@ -94,7 +92,7 @@ func TestEcoTracePool_ConcurrentSafe(t *testing.T) {
 	wg.Wait()
 }
 
-// TestResponseWriterPool_ConcurrentSafe mesmo para responseWriter.
+// TestResponseWriterPool_ConcurrentSafe does the same for responseWriter.
 func TestResponseWriterPool_ConcurrentSafe(t *testing.T) {
 	const goroutines = 50
 	const iterations = 200
@@ -117,8 +115,8 @@ func TestResponseWriterPool_ConcurrentSafe(t *testing.T) {
 	wg.Wait()
 }
 
-// BenchmarkEcoTracePool mede o custo de acquire+populate+release.
-// Compare com BenchmarkEcoTraceAlloc para ver o ganho real.
+// BenchmarkEcoTracePool measures acquire+populate+release cost.
+// Compare with BenchmarkEcoTraceAlloc to see the real gain.
 func BenchmarkEcoTracePool_AcquireRelease(b *testing.B) {
 	now := time.Now()
 	b.ReportAllocs()
@@ -132,8 +130,8 @@ func BenchmarkEcoTracePool_AcquireRelease(b *testing.B) {
 	}
 }
 
-// BenchmarkEcoTraceAlloc mede o custo de alocar *EcoTrace diretamente.
-// Deve ser significativamente mais lento que BenchmarkEcoTracePool.
+// BenchmarkEcoTraceAlloc measures direct *EcoTrace allocation cost.
+// It should be significantly slower than BenchmarkEcoTracePool.
 func BenchmarkEcoTraceAlloc(b *testing.B) {
 	now := time.Now()
 	b.ReportAllocs()

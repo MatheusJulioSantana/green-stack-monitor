@@ -17,23 +17,24 @@ cmd/server               → (composition root, no business logic)
     ├── internal/service       → pkg/domain, internal/cache
     ├── internal/handler       → pkg/domain, pkg/middleware
     │
-    ├── pkg/domain             → stdlib only   ← importável externamente, zero deps
-    ├── pkg/estimator          → pkg/domain    ← importável externamente
+    ├── pkg/domain             → stdlib only   ← external API, zero deps
+    ├── pkg/estimator          → pkg/domain    ← external API
     ├── pkg/middleware         → pkg/domain, pkg/estimator, otel/metric
-    └── pkg/badge              → stdlib only   ← importável externamente
+    └── pkg/badge              → stdlib only   ← external API
 ```
 
-**Regra de visibilidade:**
-- `pkg/` — API pública da lib. Qualquer projeto Go pode importar.
-- `internal/` — detalhes do servidor. O compilador bloqueia importação externa.
+**Visibility rule:**
+- `pkg/` is the public library API. Any Go project can import it.
+- `internal/` contains server details. The Go compiler blocks external imports.
 
-`pkg/domain` é o dependency floor — zero imports externos.
+`pkg/domain` is the dependency floor: zero external imports.
 
 ---
 
 ## The Middleware Hot Path
 
-The single most important constraint: **the middleware must not add measurable latency**.
+The single most important constraint: **the middleware must keep request overhead
+small, bounded, and observable**.
 
 ### What happens per request (sampled)
 
@@ -46,7 +47,8 @@ The single most important constraint: **the middleware must not add measurable l
 7. Capture `TracePayload` fields → `releaseEcoTrace` → `releaseResponseWriter`.
 8. `select { case ch <- payload: default: drop }` — ~50 ns, non-blocking.
 
-For unsampled requests: ~2 ns + one pool acquire/release (zero allocs).
+For unsampled requests: only the sampler decision runs before handing off to
+the next handler. No context injection, no pool access, no worker enqueue.
 
 ### Why channel + worker pool instead of `go func()`
 
@@ -94,8 +96,8 @@ Documented clearly in the README.
 per TTL. Converts N allocations (repeated `fmt.Sprintf`) to 1.
 
 **Client-side ETag + 304**: when badge content hasn't changed, server sends
-`304 Not Modified` with empty body. Zero bytes transferred. Critical when the badge
-is embedded in a popular README rendered thousands of times per hour.
+`304 Not Modified` with an empty body. No SVG body is transferred, which matters
+when the badge is embedded in a popular README rendered thousands of times per hour.
 
 ### check-lock-check in SVGAndETag
 

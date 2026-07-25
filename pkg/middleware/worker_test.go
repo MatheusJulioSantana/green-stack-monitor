@@ -60,7 +60,7 @@ func newTestWorker(t testing.TB, repo domain.TraceWriter, cfg middleware.WorkerC
 	return middleware.NewWorker(cfg, est, repo, noop.NewMeterProvider())
 }
 
-// --- testes -----------------------------------------------------------------
+// --- tests ------------------------------------------------------------------
 
 func TestWorker_ProcessesAllPayloads(t *testing.T) {
 	const n = 50
@@ -81,7 +81,7 @@ func TestWorker_ProcessesAllPayloads(t *testing.T) {
 	w.Stop()
 
 	if int(repo.count.Load()) != n {
-		t.Errorf("esperava %d traces, got %d", n, repo.count.Load())
+		t.Errorf("expected %d traces, got %d", n, repo.count.Load())
 	}
 }
 
@@ -100,9 +100,9 @@ func TestWorker_StopDrainsChannel(t *testing.T) {
 		}
 	}
 
-	// Cancela antes do canal esvaziar — workers devem drenar sem panicar.
+	// Cancel before the channel is empty; workers must drain without panicking.
 	cancel()
-	w.Stop() // não deve bloquear nem vazar goroutines
+	w.Stop()
 }
 
 func TestWorker_Backpressure_DropsWhenFull(t *testing.T) {
@@ -134,13 +134,13 @@ func TestWorker_Backpressure_DropsWhenFull(t *testing.T) {
 	}
 
 	if dropped == 0 {
-		t.Error("esperava drops com canal cheio, got 0")
+		t.Error("expected drops with full channel, got 0")
 	}
 	if w.Drops() != uint64(dropped) {
 		t.Errorf("Drops(): got %d, want %d", w.Drops(), dropped)
 	}
 
-	// Drena sem fazer I/O (contexto já cancelado).
+	// Drain without doing I/O because context is already canceled.
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	w.Start(ctx)
@@ -161,16 +161,16 @@ func TestWorker_CacheHit_RecordsSaving(t *testing.T) {
 	}
 
 	if !repo.waitCount(1, 500*time.Millisecond) {
-		t.Fatal("worker não processou o payload")
+		t.Fatal("worker did not process payload")
 	}
 	w.Stop()
 
 	trace := <-repo.saved
 	if !trace.CacheHit {
-		t.Error("esperava CacheHit = true")
+		t.Error("expected CacheHit = true")
 	}
 	if trace.CO2Saved <= 0 {
-		t.Errorf("CO2Saved deve ser > 0 em cache hit, got %v", trace.CO2Saved)
+		t.Errorf("CO2Saved must be > 0 on cache hit, got %v", trace.CO2Saved)
 	}
 }
 

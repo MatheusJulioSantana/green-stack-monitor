@@ -3,7 +3,6 @@ package greenstack
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -44,91 +43,18 @@ func BadgeHandler(c *BadgeCache) http.HandlerFunc {
 	return badge.Handler(c)
 }
 
-// BadgeColor retorna a cor do badge em hex baseada no CO₂/req
+// BadgeColor returns the canonical badge color for a CO2-per-request value.
 func BadgeColor(perReqG float64) string {
-	switch {
-	case perReqG < 0.001:
-		return "#3cb878" // verde
-	case perReqG < 0.01:
-		return "#8cc63f" // amarelo-verde
-	case perReqG < 0.1:
-		return "#f7941d" // âmbar
-	default:
-		return "#e53935" // vermelho
-	}
+	_, color := badge.Classify(perReqG)
+	return color
 }
 
-// BadgeSVG retorna o SVG do badge com a cor baseada no CO₂/req
-// Para usar: passe um *BadgeCache e chame c.SVGAndETag() para ter svg e etag
-// Este helper gera o SVG on-the-fly sem cache (para casos simples)
+// BadgeSVG renders a badge without a long-lived cache.
+// Production services should prefer NewBadgeCache with BadgeHandler.
 func BadgeSVG(perReqG float64) string {
-	// Gera o SVG dinamicamente sem usar cache
-	label, color := classifyForBadge(perReqG)
-	return renderBadgeSVG(label, color)
-}
-
-// classifyForBadge mapeia CO₂ para label e cor (duplica logic de badge.classify)
-func classifyForBadge(g float64) (label, color string) {
-	switch {
-	case g < 0.001:
-		return labelForCO2(g, "%.4f g CO₂/req"), "#3cb878"
-	case g < 0.01:
-		return labelForCO2(g, "%.3f g CO₂/req"), "#8cc63f"
-	case g < 0.1:
-		return labelForCO2(g, "%.2f g CO₂/req"), "#f7941d"
-	default:
-		return labelForCO2(g, "%.2f g CO₂/req"), "#e53935"
-	}
-}
-
-func labelForCO2(g float64, format string) string {
-	var v float64
-	if g >= 0.1 {
-		// Arredonda para 2 decimais
-		v = float64(int(g*100)) / 100
-	} else {
-		v = g
-	}
-	return fmt.Sprintf(format, v)
-}
-
-// renderBadgeSVG produz um SVG no formato Shields.io flat badge.
-// Cópia simplificada de badge.render() para uso standalone
-func renderBadgeSVG(label, color string) string {
-	const leftText = "carbon"
-	const lw = 58 // largura fixa do lado esquerdo ("carbon")
-
-	rightText := label
-	rw := len(rightText)*7 + 10
-	total := lw + rw
-
-	return fmt.Sprintf(
-		`<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="20" role="img" aria-label="carbon: %s">`+
-			`<title>carbon: %s</title>`+
-			`<linearGradient id="s" x2="0" y2="100%%">`+
-			`<stop offset="0" stop-color="#bbb" stop-opacity=".1"/>`+
-			`<stop offset="1" stop-opacity=".1"/>`+
-			`</linearGradient>`+
-			`<clipPath id="r"><rect width="%d" height="20" rx="3" fill="#fff"/></clipPath>`+
-			`<g clip-path="url(#r)">`+
-			`<rect width="%d" height="20" fill="#555"/>`+
-			`<rect x="%d" width="%d" height="20" fill="%s"/>`+
-			`<rect width="%d" height="20" fill="url(#s)"/>`+
-			`</g>`+
-			`<g fill="#fff" text-anchor="middle" font-family="DejaVu Sans,Verdana,Geneva,sans-serif" font-size="110">`+
-			`<text x="%d" y="150" fill="#010101" fill-opacity=".3" transform="scale(.1)" textLength="%d" lengthAdjust="spacing">%s</text>`+
-			`<text x="%d" y="140" transform="scale(.1)" textLength="%d" lengthAdjust="spacing">%s</text>`+
-			`<text x="%d" y="150" fill="#010101" fill-opacity=".3" transform="scale(.1)" textLength="%d" lengthAdjust="spacing">%s</text>`+
-			`<text x="%d" y="140" transform="scale(.1)" textLength="%d" lengthAdjust="spacing">%s</text>`+
-			`</g></svg>`,
-		total, label, label,
-		total,
-		lw, lw, rw, color, total,
-		lw*5, (lw-10)*10, leftText,
-		lw*5, (lw-10)*10, leftText,
-		(lw+rw/2)*10, (rw-10)*10, rightText,
-		(lw+rw/2)*10, (rw-10)*10, rightText,
-	)
+	c := badge.NewCache(func() float64 { return perReqG }, 0)
+	svg, _ := c.SVGAndETag()
+	return svg
 }
 
 func Snapshot(est *Estimator) estimator.Snapshot {

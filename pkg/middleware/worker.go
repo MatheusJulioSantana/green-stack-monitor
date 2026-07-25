@@ -15,9 +15,9 @@ import (
 	"github.com/matheusjuliosantana/green-stack-monitor/pkg/estimator"
 )
 
-// TracePayload é o que viaja pelo canal entre o middleware e o worker.
-// Struct de valor (não ponteiro) — o canal aloca o slice interno uma vez,
-// os payloads são copiados. Sem pressão no GC.
+// TracePayload travels through the channel between middleware and worker.
+// It is a value struct, so payloads are copied through the channel without
+// pointer churn or extra GC pressure.
 type TracePayload struct {
 	Method     string
 	Path       string
@@ -28,15 +28,15 @@ type TracePayload struct {
 	StartedAt  time.Time
 }
 
-// WorkerConfig controla o dimensionamento do pool.
+// WorkerConfig controls pool sizing.
 type WorkerConfig struct {
-	// BufferSize é a capacidade do canal entre middleware e workers.
-	// Regra: BufferSize >= peak_rps × avg_processing_ms / 1000
-	// Padrão: 512.
+	// BufferSize is the channel capacity between middleware and workers.
+	// Rule: BufferSize >= peak_rps * avg_processing_ms / 1000
+	// Default: 512.
 	BufferSize int
 
-	// Count é o número de goroutines worker. Padrão: 4.
-	// Aumentar além de GOMAXPROCS raramente ajuda — gargalo é I/O.
+	// Count is the number of worker goroutines. Default: 4.
+	// Going beyond GOMAXPROCS rarely helps; the bottleneck is usually I/O.
 	Count int
 }
 
@@ -50,14 +50,14 @@ func (c WorkerConfig) withDefaults() WorkerConfig {
 	return c
 }
 
-// Worker processa TracePayloads em background sem bloquear o caminho da request.
+// Worker processes TracePayloads in the background without blocking requests.
 //
 // Lifecycle:
 //
 //	w := NewWorker(cfg, est, repo, mp)
-//	w.Start(ctx)   // antes de aceitar tráfego
-//	// servidor rodando...
-//	w.Stop()       // após srv.Shutdown() — drena o canal antes de sair
+//	w.Start(ctx)   // before accepting traffic
+//	// server running...
+//	w.Stop()       // after srv.Shutdown; drains the channel before exit
 type Worker struct {
 	ch   chan TracePayload
 	cfg  WorkerConfig
@@ -65,12 +65,12 @@ type Worker struct {
 	repo domain.TraceWriter
 	wg   sync.WaitGroup
 
-	// drops: payloads descartados por canal cheio.
-	// Incrementado no select{default:} do middleware.
-	// Lido pelo ObservableCounter OTEL via callback.
+	// drops counts payloads dropped because the channel was full.
+	// It is incremented by the middleware select{default:} and read by the OTEL
+	// ObservableCounter callback.
 	drops atomic.Uint64
 
-	// Instrumentos OTEL — criados em NewWorker, usados em observe().
+	// OTEL instruments are created in NewWorker and used in observe.
 	co2Total    metric.Float64Counter
 	co2Saved    metric.Float64Counter
 	latencyHist metric.Float64Histogram
@@ -80,11 +80,11 @@ type Worker struct {
 	dropTotal   metric.Int64ObservableCounter
 }
 
-// NewWorker cria um Worker e registra os instrumentos OTEL no MeterProvider.
+// NewWorker creates a Worker and registers OTEL instruments on the MeterProvider.
 //
-// mp é a única dependência de observabilidade. O backend (Prometheus, OTLP,
-// stdout) é configurado pelo chamador em main.go — o worker não sabe nem
-// precisa saber qual backend está ativo.
+// mp is the only observability dependency. The backend (Prometheus, OTLP,
+// stdout) is configured by the caller; the worker does not need to know which
+// backend is active.
 func NewWorker(
 	cfg WorkerConfig,
 	est *estimator.Estimator,
@@ -101,30 +101,30 @@ func NewWorker(
 		repo: repo,
 	}
 
-	// Meter com nome de instrumentação que identifica a lib no backend.
-	// Convenção OTEL: nome do módulo Go sem versão.
+	// Instrumentation scope identifies the library in the backend.
+	// OTEL convention: Go module name without version.
 	meter := mp.Meter("github.com/matheusjuliosantana/green-stack-monitor")
 
-	// Counters: valores que só crescem — CO₂ emitido e economizado.
+	// Counters only grow: CO2 emitted and avoided.
 	var err error
 	w.co2Total, err = meter.Float64Counter(
 		"green.co2.grams",
-		metric.WithDescription("Gramas acumuladas de CO₂ emitidas por requests HTTP."),
+		metric.WithDescription("Accumulated grams of CO2 emitted by HTTP requests."),
 		metric.WithUnit("g"),
 	)
 	must(err, "green.co2.grams")
 
 	w.co2Saved, err = meter.Float64Counter(
 		"green.co2.saved_grams",
-		metric.WithDescription("Gramas de CO₂ evitadas via cache hits."),
+		metric.WithDescription("Grams of CO2 avoided through cache hits."),
 		metric.WithUnit("g"),
 	)
 	must(err, "green.co2.saved_grams")
 
-	// Histogramas: distribuição de latência e alocações por request.
+	// Histograms: latency and allocation distribution per request.
 	w.latencyHist, err = meter.Float64Histogram(
 		"green.request.duration",
-		metric.WithDescription("Duração das requests HTTP."),
+		metric.WithDescription("HTTP request duration."),
 		metric.WithUnit("s"),
 		metric.WithExplicitBucketBoundaries(
 			0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10,
@@ -134,7 +134,7 @@ func NewWorker(
 
 	w.allocHist, err = meter.Int64Histogram(
 		"green.request.alloc_bytes",
-		metric.WithDescription("Bytes de heap alocados por request."),
+		metric.WithDescription("Heap bytes allocated per request."),
 		metric.WithUnit("By"),
 		metric.WithExplicitBucketBoundaries(
 			1024, 4096, 16384, 65536, 262144, 1048576, 4194304,
@@ -142,11 +142,11 @@ func NewWorker(
 	)
 	must(err, "green.request.alloc_bytes")
 
-	// Observable gauges: lidos por callback no momento do scrape/export.
-	// Zero alocações por coleta — apenas leitura de estado atômico.
+	// Observable gauges are read by callback at scrape/export time.
+	// They only read process or atomic state.
 	w.goroutines, err = meter.Int64ObservableGauge(
 		"green.runtime.goroutines",
-		metric.WithDescription("Goroutines ativas no momento de conclusão da request."),
+		metric.WithDescription("Active goroutines at observation time."),
 		metric.WithInt64Callback(func(_ context.Context, o metric.Int64Observer) error {
 			o.Observe(int64(runtime.NumGoroutine()))
 			return nil
@@ -157,8 +157,8 @@ func NewWorker(
 	w.queueLen, err = meter.Int64ObservableGauge(
 		"green.worker.queue_len",
 		metric.WithDescription(
-			"Traces aguardando no canal. "+
-				"Se próximo de ECO_WORKER_BUFFER constantemente, aumente Count ou BufferSize.",
+			"Traces waiting in the channel. "+
+				"If this stays near ECO_WORKER_BUFFER, increase Count or BufferSize.",
 		),
 		metric.WithInt64Callback(func(_ context.Context, o metric.Int64Observer) error {
 			o.Observe(int64(len(ch)))
@@ -167,13 +167,13 @@ func NewWorker(
 	)
 	must(err, "green.worker.queue_len")
 
-	// Observable counter para drops — não pode usar Counter normal porque
-	// o incremento ocorre no middleware (fora do worker), não em observe().
+	// Observable counter for drops. A normal Counter would be recorded outside
+	// the worker, while this value is observed from atomic state.
 	w.dropTotal, err = meter.Int64ObservableCounter(
 		"green.worker.backpressure_drops",
 		metric.WithDescription(
-			"Traces descartados por canal cheio. "+
-				"Valor > 0 indica subdimensionamento de BufferSize ou Count.",
+			"Traces dropped because the channel was full. "+
+				"Value > 0 indicates BufferSize or Count is undersized.",
 		),
 		metric.WithInt64Callback(func(_ context.Context, o metric.Int64Observer) error {
 			o.Observe(int64(w.drops.Load()))
@@ -185,25 +185,23 @@ func NewWorker(
 	return w
 }
 
-// Chan retorna o canal somente-escrita para o middleware.
+// Chan returns the write-only channel used by middleware.
 func (w *Worker) Chan() chan<- TracePayload {
 	return w.ch
 }
 
-// Drops retorna o contador acumulado de drops por backpressure.
+// Drops returns the accumulated backpressure drop count.
 func (w *Worker) Drops() uint64 {
 	return w.drops.Load()
 }
 
-// SimulateDrop incrementa o contador de drops.
-// Usado exclusivamente em testes — em produção, o select{default:} do
-// middleware é quem incrementa diretamente via w.drops.Add(1).
+// SimulateDrop increments the drop counter for tests.
 func (w *Worker) SimulateDrop() {
 	w.drops.Add(1)
 }
 
-// Start lança Count goroutines worker.
-// Deve ser chamado antes do servidor começar a aceitar tráfego.
+// Start launches Count worker goroutines.
+// It must be called before the server starts accepting traffic.
 func (w *Worker) Start(ctx context.Context) {
 	for range w.cfg.Count {
 		w.wg.Add(1)
@@ -215,8 +213,8 @@ func (w *Worker) Start(ctx context.Context) {
 	)
 }
 
-// Stop fecha o canal e aguarda todas as goroutines terminarem.
-// Deve ser chamado após srv.Shutdown() — nunca antes.
+// Stop closes the channel and waits for all goroutines to finish.
+// It must be called after srv.Shutdown, never before.
 func (w *Worker) Stop() {
 	close(w.ch)
 	w.wg.Wait()
@@ -234,9 +232,9 @@ func (w *Worker) loop(ctx context.Context) {
 	}
 }
 
-// observe calcula o CO₂ e registra os instrumentos OTEL.
-// ctx é passado explicitamente — os instrumentos OTEL precisam de contexto
-// para propagar trace IDs quando OTEL tracing também estiver ativo.
+// observe calculates CO2 and records OTEL instruments.
+// ctx is explicit because OTEL instruments need context to propagate trace IDs
+// when tracing is also enabled.
 func (w *Worker) observe(ctx context.Context, p TracePayload, skipSave bool) {
 	var memAfter runtime.MemStats
 	runtime.ReadMemStats(&memAfter)
@@ -254,8 +252,7 @@ func (w *Worker) observe(ctx context.Context, p TracePayload, skipSave bool) {
 		saved = w.est.CacheSaving(co2)
 	}
 
-	// Atributos OTEL — equivalem aos labels do Prometheus.
-	// Usamos attribute.String para consistência com a convenção OTEL semconv.
+	// OTEL attributes become Prometheus labels through the exporter.
 	attrs := metric.WithAttributes(
 		attribute.String("http.method", p.Method),
 		attribute.String("http.route", p.Path),
@@ -294,8 +291,7 @@ func (w *Worker) observe(ctx context.Context, p TracePayload, skipSave bool) {
 	}
 }
 
-// must é um helper para erros de criação de instrumento OTEL.
-// Falha em startup — melhor do que silenciosamente não registrar métricas.
+// must fails fast when OTEL instrument creation fails.
 func must(err error, name string) {
 	if err != nil {
 		panic("green-stack: failed to create OTEL instrument " + name + ": " + err.Error())

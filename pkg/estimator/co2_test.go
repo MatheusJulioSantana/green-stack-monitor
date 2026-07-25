@@ -55,10 +55,10 @@ func TestEstimateCPU_Monotonic(t *testing.T) {
 func TestEstimateCPU_KnownValue(t *testing.T) {
 	est, _ := estimator.New(referenceConfig)
 
-	// Cálculo manual passo a passo:
+	// Manual step-by-step calculation:
 	//   kWh = cpu_ms * TDP(W) / 3_600_000
 	//       = 1000 * 4 / 3_600_000
-	//       = 1.1111e-3 kWh          ← o comentário anterior errava aqui (escrevia 1.111e-6)
+	//       = 1.1111e-3 kWh
 	//   CO2 = kWh * PUE * CI
 	//       = 1.1111e-3 * 1.2 * 100
 	//       = 1.3333e-1 g

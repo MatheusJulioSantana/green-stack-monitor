@@ -1,18 +1,17 @@
-// Command server — composition root do Green Stack Monitor.
+// Command server is the composition root for Green Stack Monitor.
 //
-// Ordem de inicialização:
-//  1. Config       — env vars, falha rápido se inválido
-//  2. OTEL         — MeterProvider com bridge Prometheus
+// Startup order:
+//  1. Config       — environment variables, fail fast if invalid
+//  2. OTEL         — MeterProvider with Prometheus bridge
 //  3. Infra        — cache, repository, estimator
-//  4. Worker       — iniciado ANTES de aceitar tráfego
+//  4. Worker       — started before accepting traffic
 //  5. Services / Handlers
 //  6. Router
 //  7. HTTP server + graceful shutdown
 //
-// Por que OTEL antes da infra?
-// O MeterProvider é injetado no Worker e no middleware. Criar os instrumentos
-// OTEL antes de qualquer outra coisa garante que nenhum componente tente
-// registrar uma métrica antes do provider estar pronto.
+// OTEL is created before infra because the MeterProvider is injected into the
+// worker and middleware. Creating instruments up front prevents components from
+// recording metrics before the provider is ready.
 package main
 
 import (
@@ -30,25 +29,25 @@ import (
 	"github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 
-	// OTEL — API, SDK e bridge Prometheus.
-	// Apenas main.go conhece o backend concreto.
-	// O worker e o middleware dependem só da interface metric.MeterProvider.
+	// OTEL API, SDK and Prometheus bridge.
+	// Only main.go knows the concrete backend. Worker and middleware depend
+	// only on the metric.MeterProvider interface.
 	prometheusExporter "go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/sdk/metric"
 
-	// Prometheus — apenas para servir /metrics e coletar Go runtime stats.
+	// Prometheus is used only to serve /metrics and collect Go runtime stats.
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/matheusjuliosantana/green-stack-monitor/internal/cache"
 	"github.com/matheusjuliosantana/green-stack-monitor/internal/config"
-	"github.com/matheusjuliosantana/green-stack-monitor/pkg/estimator"
 	"github.com/matheusjuliosantana/green-stack-monitor/internal/handler"
-	"github.com/matheusjuliosantana/green-stack-monitor/pkg/middleware"
 	"github.com/matheusjuliosantana/green-stack-monitor/internal/repository"
 	"github.com/matheusjuliosantana/green-stack-monitor/internal/service"
 	"github.com/matheusjuliosantana/green-stack-monitor/pkg/badge"
+	"github.com/matheusjuliosantana/green-stack-monitor/pkg/estimator"
+	"github.com/matheusjuliosantana/green-stack-monitor/pkg/middleware"
 )
 
 func main() {
@@ -63,36 +62,35 @@ func main() {
 }
 
 func run() error {
-	// ── 1. Config ──────────────────────────────────────────────────────────
+	// 1. Config.
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
 
-	// ── 2. OTEL — MeterProvider com bridge Prometheus ──────────────────────
+	// 2. OTEL: MeterProvider with Prometheus bridge.
 	//
-	// Arquitetura:
+	// Architecture:
 	//   OTEL SDK (metric.MeterProvider)
-	//       └── prometheusExporter.New()   ← bridge OTEL → Prometheus
-	//               └── prometheus.Registry ← onde os metrics ficam
-	//                       └── /metrics    ← scrapeado pelo Prometheus
+	//       └── prometheusExporter.New()
+	//               └── prometheus.Registry
+	//                       └── /metrics
 	//
-	// O worker e o middleware só conhecem metric.MeterProvider.
-	// Trocar para OTLP (Datadog, Honeycomb etc.) é trocar o exporter
-	// aqui em main.go — zero mudança no resto do código.
+	// Worker and middleware only know metric.MeterProvider. Switching to OTLP
+	// changes the exporter here without touching the rest of the code.
 
-	// Registry explícito: nunca DefaultRegisterer.
-	// Permite múltiplas instâncias e testes limpos.
+	// Use an explicit registry, never DefaultRegisterer. This keeps tests clean
+	// and allows multiple instances in the same process.
 	promReg := prometheus.NewRegistry()
 
-	// Go runtime + process metrics no mesmo registry.
+	// Go runtime and process metrics share the same registry.
 	promReg.MustRegister(
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)
 
-	// Bridge OTEL → Prometheus: cada instrumento OTEL criado no SDK
-	// aparece automaticamente como metric Prometheus no registry.
+	// OTEL to Prometheus bridge: every OTEL instrument created by the SDK is
+	// exposed as a Prometheus metric in this registry.
 	promExporter, err := prometheusExporter.New(
 		prometheusExporter.WithRegisterer(promReg),
 	)
@@ -100,19 +98,19 @@ func run() error {
 		return fmt.Errorf("prometheus exporter: %w", err)
 	}
 
-	// MeterProvider é o ponto de entrada do OTEL SDK.
-	// WithReader conecta o exporter — ele será chamado no scrape do /metrics.
+	// MeterProvider is the OTEL SDK entry point. WithReader connects the exporter
+	// that Prometheus calls on /metrics scrapes.
 	mp := metric.NewMeterProvider(
 		metric.WithReader(promExporter),
 	)
 	defer func() {
-		// Flush de métricas pendentes no shutdown.
+		// Flush pending metrics on shutdown.
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = mp.Shutdown(ctx)
 	}()
 
-	// ── 3. Infra ───────────────────────────────────────────────────────────
+	// 3. Infra.
 	var appCache cache.Cache
 	if cfg.RedisAddr != "" {
 		rc, err := cache.NewRedis(cfg.RedisAddr, cfg.RedisPassword, cfg.RedisDB)
@@ -124,7 +122,7 @@ func run() error {
 		slog.Info("cache backend: redis", "addr", cfg.RedisAddr)
 	} else {
 		appCache = cache.NewMemory()
-		slog.Info("cache backend: in-memory (defina REDIS_ADDR para Redis)")
+		slog.Info("cache backend: in-memory (set REDIS_ADDR to enable Redis)")
 	}
 
 	repo := &repository.InMemoryEcoRepository{}
@@ -134,9 +132,9 @@ func run() error {
 		return fmt.Errorf("estimator: %w", err)
 	}
 
-	// ── 4. Worker ──────────────────────────────────────────────────────────
-	// Recebe metric.MeterProvider — não sabe que o backend é Prometheus.
-	// Iniciado antes do servidor para que nenhum trace seja perdido.
+	// 4. Worker.
+	// It receives metric.MeterProvider and does not know the backend is Prometheus.
+	// It starts before the server so no trace is lost.
 	workerCtx, cancelWorker := context.WithCancel(context.Background())
 	defer cancelWorker()
 
@@ -147,11 +145,11 @@ func run() error {
 		},
 		est,
 		repo,
-		mp, // metric.MeterProvider — interface, não tipo concreto
+		mp, // metric.MeterProvider interface, not a concrete backend
 	)
 	worker.Start(workerCtx)
 
-	// ── 5. Services / Handlers ─────────────────────────────────────────────
+	// 5. Services / Handlers.
 	ecoSvc := service.NewEcoService(repo, appCache)
 	ecoH := handler.NewEcoHandler(ecoSvc)
 
@@ -164,7 +162,7 @@ func run() error {
 	}
 	badgeCache := badge.NewCache(co2PerReqFn, 2*time.Minute)
 
-	// ── 6. Router ──────────────────────────────────────────────────────────
+	// 6. Router.
 	r := chi.NewRouter()
 	r.Use(chiMiddleware.RealIP)
 	r.Use(chiMiddleware.RequestID)
@@ -178,18 +176,17 @@ func run() error {
 		SampleRate:    cfg.SampleRate,
 	}))
 
-	// Rotas públicas
+	// Public routes.
 	r.Get("/healthz", handler.Health)
 	r.Get("/badge", badge.Handler(badgeCache))
 
-	// /metrics: servido pelo promhttp usando o registry do bridge OTEL.
-	// O Prometheus scrape este endpoint e obtém tanto as métricas OTEL
-	// (green.*) quanto as métricas de runtime Go (go_*, process_*).
+	// /metrics is served by promhttp with the OTEL bridge registry. Prometheus
+	// scrapes this endpoint for both green.* and Go runtime metrics.
 	r.Handle("/metrics", promhttp.HandlerFor(promReg, promhttp.HandlerOpts{
 		EnableOpenMetrics: true,
 	}))
 
-	// Rotas protegidas
+	// Protected routes.
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.JWTAuth(cfg.JWTSecret))
 		r.Get("/me", handler.Me)
@@ -198,10 +195,10 @@ func run() error {
 
 	if cfg.PProfEnabled {
 		r.Mount("/debug", http.DefaultServeMux)
-		slog.Warn("pprof habilitado — garanta que /debug não está exposto publicamente")
+		slog.Warn("pprof enabled; make sure /debug is not publicly exposed")
 	}
 
-	// ── 7. HTTP server + graceful shutdown ─────────────────────────────────
+	// 7. HTTP server + graceful shutdown.
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
 		Handler:      r,
@@ -214,7 +211,7 @@ func run() error {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
-		slog.Info("servidor iniciando", "port", cfg.Port)
+		slog.Info("server starting", "port", cfg.Port)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("ListenAndServe", "err", err)
 			quit <- syscall.SIGTERM
@@ -222,18 +219,18 @@ func run() error {
 	}()
 
 	<-quit
-	slog.Info("shutdown iniciado")
+	slog.Info("shutdown started")
 
-	// Ordem crítica — ver docs/architecture.md#graceful-shutdown-order
+	// Critical order: see docs/architecture.md#graceful-shutdown-order.
 	httpCtx, httpCancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer httpCancel()
 	if err := srv.Shutdown(httpCtx); err != nil {
 		return fmt.Errorf("graceful shutdown: %w", err)
 	}
 
-	cancelWorker() // para de fazer I/O; workers ainda drenam o canal
-	worker.Stop()  // fecha o canal e aguarda wg.Wait()
+	cancelWorker() // stop doing I/O; workers still drain the channel
+	worker.Stop()  // close the channel and wait for wg.Wait()
 
-	slog.Info("servidor encerrado com sucesso")
+	slog.Info("server stopped successfully")
 	return nil
 }

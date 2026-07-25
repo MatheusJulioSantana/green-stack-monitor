@@ -9,7 +9,7 @@ services:
       - "8080:8080"
     environment:
       PORT: "8080"
-      JWT_SECRET: "change-me-to-a-32-byte-random-secret!!"
+      JWT_SECRET: "replace-with-32-plus-random-bytes"
       REDIS_ADDR: "redis:6379"
       CO2_TDP_WATTS: "4.0"
       CO2_PUE: "1.2"

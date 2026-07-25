@@ -15,8 +15,6 @@ import (
 	"github.com/matheusjuliosantana/green-stack-monitor/pkg/middleware"
 )
 
-// --- fakeRepo ---------------------------------------------------------------
-
 type fakeRepo struct {
 	count atomic.Int64
 	last  chan domain.RequestTrace
@@ -28,13 +26,14 @@ func newFakeRepo() *fakeRepo {
 
 func (f *fakeRepo) Save(_ context.Context, t domain.RequestTrace) error {
 	f.count.Add(1)
-	f.last <- t
+	select {
+	case f.last <- t:
+	default:
+	}
 	return nil
 }
 
 func (f *fakeRepo) Aggregates(_ context.Context) (domain.CacheMetrics, error) {
-	// Drena o canal para contar hits e misses.
-	// Usado apenas em TestRepository_HitRate — não afeta outros testes.
 	var hits, misses uint64
 	var saved float64
 	for {
@@ -63,8 +62,6 @@ func (f *fakeRepo) waitSaved(n int, timeout time.Duration) bool {
 	return false
 }
 
-// --- helpers ----------------------------------------------------------------
-
 func newEst(t testing.TB) *estimator.Estimator {
 	t.Helper()
 	est, err := estimator.New(domain.CO2Config{
@@ -78,14 +75,10 @@ func newEst(t testing.TB) *estimator.Estimator {
 	return est
 }
 
-// noopMP retorna um MeterProvider que descarta tudo — ideal para testes
-// que verificam comportamento, não métricas OTEL.
 func noopMP() noop.MeterProvider {
 	return noop.NewMeterProvider()
 }
 
-// buildMiddleware cria worker + middleware com noop MeterProvider.
-// Retorna o handler e um cleanup que para o worker ao fim do teste.
 func buildMiddleware(t testing.TB, repo domain.EcoRepository, sampleRate float64) (http.Handler, func()) {
 	t.Helper()
 	est := newEst(t)
@@ -113,8 +106,6 @@ func buildMiddleware(t testing.TB, repo domain.EcoRepository, sampleRate float64
 	return mw(inner), func() { cancel(); w.Stop() }
 }
 
-// --- testes de comportamento ------------------------------------------------
-
 func TestEcoMetrics_SampleRate1_RecordsTrace(t *testing.T) {
 	repo := newFakeRepo()
 	h, cleanup := buildMiddleware(t, repo, 1.0)
@@ -123,11 +114,11 @@ func TestEcoMetrics_SampleRate1_RecordsTrace(t *testing.T) {
 	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/test", nil))
 
 	if !repo.waitSaved(1, 500*time.Millisecond) {
-		t.Fatal("trace não foi salvo dentro do timeout")
+		t.Fatal("trace was not saved before timeout")
 	}
 	trace := <-repo.last
 	if trace.CO2Grams < 0 {
-		t.Errorf("CO2Grams deve ser >= 0, got %v", trace.CO2Grams)
+		t.Errorf("CO2Grams must be >= 0, got %v", trace.CO2Grams)
 	}
 }
 
@@ -142,13 +133,13 @@ func TestEcoMetrics_SampleRate0_NeverRecords(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	if n := repo.count.Load(); n != 0 {
-		t.Errorf("SampleRate=0.0: esperava 0 traces, got %d", n)
+		t.Errorf("SampleRate=0.0: expected 0 traces, got %d", n)
 	}
 }
 
 func TestEcoMetrics_SampleRate_Partial(t *testing.T) {
 	if testing.Short() {
-		t.Skip("teste estatístico pulado com -short")
+		t.Skip("statistical test skipped in short mode")
 	}
 
 	repo := newFakeRepo()
@@ -171,7 +162,7 @@ func TestEcoMetrics_SampleRate_Partial(t *testing.T) {
 	got := int(repo.count.Load())
 	min, max := int(requests*(0.5-0.08)), int(requests*(0.5+0.08))
 	if got < min || got > max {
-		t.Errorf("SampleRate=0.5: esperava [%d, %d] traces, got %d", min, max, got)
+		t.Errorf("SampleRate=0.5: expected [%d, %d] traces, got %d", min, max, got)
 	}
 }
 
@@ -196,14 +187,14 @@ func TestEcoMetrics_MarkCacheHit(t *testing.T) {
 	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/cached", nil))
 
 	if !repo.waitSaved(1, 500*time.Millisecond) {
-		t.Fatal("trace não salvo dentro do timeout")
+		t.Fatal("trace was not saved before timeout")
 	}
 	trace := <-repo.last
 	if !trace.CacheHit {
-		t.Error("esperava CacheHit = true")
+		t.Error("expected CacheHit = true")
 	}
 	if trace.CO2Saved <= 0 {
-		t.Errorf("CO2Saved deve ser > 0 em cache hit, got %v", trace.CO2Saved)
+		t.Errorf("CO2Saved must be > 0 on cache hit, got %v", trace.CO2Saved)
 	}
 }
 
@@ -212,14 +203,14 @@ func TestEcoMetrics_MarkCacheHit_NotSampled_IsNoOp(t *testing.T) {
 	h, cleanup := buildMiddleware(t, repo, 0.0)
 	defer cleanup()
 
-	// Não deve panicar com SampleRate=0.0.
 	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
 }
 
-// --- repositório ------------------------------------------------------------
+func TestMarkCacheHit_WithoutTrace_IsNoOp(t *testing.T) {
+	middleware.MarkCacheHit(context.Background())
+}
 
 func TestRepository_HitRate(t *testing.T) {
-	// Usa fakeRepo (já definido neste arquivo) — pkg/ não depende de internal/.
 	repo := newFakeRepo()
 
 	for range 7 {
@@ -243,8 +234,6 @@ func TestRepository_HitRate(t *testing.T) {
 		t.Errorf("HitRate: got %.3f, want 0.700", got)
 	}
 }
-
-// --- benchmarks -------------------------------------------------------------
 
 func BenchmarkMiddleware_Rate1(b *testing.B) {
 	repo := newFakeRepo()

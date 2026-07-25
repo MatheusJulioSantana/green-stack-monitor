@@ -1,7 +1,7 @@
 # 🌿 Green Stack
 
 > **Because performance is the purest form of sustainability.**
-> A lightweight Go middleware to track your API's carbon footprint — in real time, with zero latency overhead.
+> A lightweight Go middleware to track your API's carbon footprint — in real time, with a tiny non-blocking hot path.
 
 
 [![Go 1.22+](https://img.shields.io/badge/go-1.22+-00ADD8?style=flat&logo=go)](https://go.dev)
@@ -46,7 +46,7 @@ Green Stack makes that cost visible, per request, in real time. When your team c
 
 ## ⚡ Features
 
-- **🍃 Whisper Quiet** — A buffered channel + async worker pool means your request latency is untouched. The middleware's only job on the hot path is a non-blocking `select`.
+- **🍃 Whisper Quiet** — A buffered channel + async worker pool keeps CO₂ work off the request path. Unsampled requests pass straight through; sampled requests enqueue with a non-blocking `select`.
 - **📡 Smart Sampling** — Don't measure everything. At 10k req/s, `SampleRate: 0.1` gives you statistically sound estimates with 90% less overhead.
 - **💎 Live Badge** — A dynamic SVG badge for your README that updates every few minutes. No external service. No API key. Just `![badge](https://your-host/badge)`.
 - **📊 Grafana Ready** — Metrics land in Prometheus automatically. Import our dashboard and see your CO₂ footprint alongside latency and throughput.
@@ -85,9 +85,10 @@ Green Stack is a standard Go middleware. Drop it into any `net/http` or `chi` st
 
 ```go
 import (
+    "github.com/matheusjuliosantana/green-stack-monitor/pkg/badge"
+    "github.com/matheusjuliosantana/green-stack-monitor/pkg/domain"
     "github.com/matheusjuliosantana/green-stack-monitor/pkg/estimator"
     "github.com/matheusjuliosantana/green-stack-monitor/pkg/middleware"
-    "github.com/matheusjuliosantana/green-stack-monitor/pkg/badge"
 )
 
 // 1. Configure the CO₂ estimator for your region and hardware.
@@ -119,7 +120,7 @@ r.Use(middleware.EcoMetrics(middleware.Options{
     SampleRate:    1.0, // reduce to 0.1 for > 1k req/s
 }))
 
-// 4. Serve the live badge.
+// 5. Serve the live badge.
 badgeCache := badge.NewCache(co2PerReqFn, 2*time.Minute)
 r.Get("/badge", badge.Handler(badgeCache))
 ```
@@ -181,7 +182,7 @@ The badge refreshes every 2 minutes (configurable) and changes color as your eff
 | 🟠 Amber | `< 0.1 g/req` | Worth investigating — check cache hit rates |
 | 🔴 Red | `≥ 0.1 g/req` | Act now — likely N+1 queries or missing cache |
 
-The badge uses `ETag` + `304 Not Modified` — when nothing changed, zero bytes cross the wire.
+The badge uses `ETag` + `304 Not Modified` — when nothing changed, no SVG body crosses the wire.
 
 ---
 
@@ -231,7 +232,7 @@ go test ./... -short -race
 ```
 HTTP Request
     │
-    ├─ sampler.sample() ──── false ──► handler (zero overhead)
+    ├─ sampler.sample() ──── false ──► handler (no trace allocation)
     │
     └─ true
         │

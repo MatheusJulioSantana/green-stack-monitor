@@ -1,6 +1,6 @@
 package middleware
 
-// Testes do sampler ficam no mesmo package (acesso ao tipo interno).
+// Sampler tests live in the same package to access the internal type.
 
 import (
 	"testing"
@@ -10,11 +10,11 @@ func TestSampler_Rate1_AlwaysSamples(t *testing.T) {
 	s := newSampler(1.0)
 	for range 1000 {
 		if !s.sample() {
-			t.Fatal("SampleRate=1.0 deve amostrar 100% das requests")
+			t.Fatal("SampleRate=1.0 must sample 100% of requests")
 		}
 	}
 	if s.Dropped() != 0 {
-		t.Errorf("Dropped deve ser 0 com rate=1.0, got %d", s.Dropped())
+		t.Errorf("Dropped must be 0 with rate=1.0, got %d", s.Dropped())
 	}
 }
 
@@ -22,30 +22,30 @@ func TestSampler_Rate0_NeverSamples(t *testing.T) {
 	s := newSampler(0.0)
 	for range 1000 {
 		if s.sample() {
-			t.Fatal("SampleRate=0.0 nunca deve amostrar")
+			t.Fatal("SampleRate=0.0 must never sample")
 		}
 	}
 	if s.Dropped() != 1000 {
-		t.Errorf("Dropped deve ser 1000 com rate=0.0, got %d", s.Dropped())
+		t.Errorf("Dropped must be 1000 with rate=0.0, got %d", s.Dropped())
 	}
 }
 
 func TestSampler_AboveRange_ClampedTo1(t *testing.T) {
-	// Valor acima de 1.0 deve ser tratado como 1.0 (clamp defensivo).
+	// Values above 1.0 are clamped to 1.0.
 	s := newSampler(1.5)
 	for range 100 {
 		if !s.sample() {
-			t.Fatal("rate > 1.0 deve ser clampado para 1.0")
+			t.Fatal("rate > 1.0 must be clamped to 1.0")
 		}
 	}
 }
 
 func TestSampler_BelowRange_ClampedTo0(t *testing.T) {
-	// Valor negativo deve ser tratado como 0.0 (clamp defensivo).
+	// Negative values are clamped to 0.0.
 	s := newSampler(-0.5)
 	for range 100 {
 		if s.sample() {
-			t.Fatal("rate < 0.0 deve ser clampado para 0.0")
+			t.Fatal("rate < 0.0 must be clamped to 0.0")
 		}
 	}
 }

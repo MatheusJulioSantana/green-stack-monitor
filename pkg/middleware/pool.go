@@ -5,40 +5,38 @@ import (
 	"time"
 )
 
-// ecoTracePool reutiliza *EcoTrace entre requests amostradas.
+// ecoTracePool reuses *EcoTrace values across sampled requests.
 //
-// Por que pool aqui e não para TracePayload?
-// TracePayload é uma struct de valor que viaja pelo canal copiada —
-// ela não aloca heap. EcoTrace é um ponteiro injetado no contexto,
-// portanto escapa para o heap a cada request amostrada.
+// Why pool here and not for TracePayload?
+// TracePayload is a value struct copied through the channel, so it does not
+// allocate on the heap. EcoTrace is a pointer injected into request context, so
+// it escapes to the heap for each sampled request.
 //
-// Ganho medido: elimina 1 alloc/request no caminho crítico de requests
-// amostradas. Em 10k req/s com SampleRate=1.0: ~10k allocs/s a menos,
-// reduzindo pressão no GC e frequência de STW (stop-the-world) pauses.
+// Measured gain: removes 1 allocation per sampled request on the critical path.
+// At 10k req/s with SampleRate=1.0, that is roughly 10k fewer allocs/s, reducing
+// GC pressure and stop-the-world pause frequency.
 //
-// Invariante de segurança: todo campo de *EcoTrace DEVE ser resetado
-// antes de ser devolvido ao pool. Se um campo com dado de uma request
-// anterior vazar para a próxima, o resultado é um bug silencioso e
-// difícil de reproduzir. O reset é feito em releaseEcoTrace(), não
-// na função Get() — isso é intencional: quem libera conhece o estado,
-// quem adquire recebe sempre um objeto limpo.
+// Safety invariant: every *EcoTrace field must be reset before returning it to
+// the pool. Leaking data from a previous request would create a silent and hard
+// to reproduce bug. Reset happens in releaseEcoTrace, not Get, because the
+// releaser knows the current state and the acquirer always receives a clean one.
 var ecoTracePool = sync.Pool{
 	New: func() any {
 		return &EcoTrace{}
 	},
 }
 
-// acquireEcoTrace retorna um *EcoTrace limpo do pool.
-// O chamador DEVE chamar releaseEcoTrace quando o trace não for mais necessário.
+// acquireEcoTrace returns a clean *EcoTrace from the pool.
+// The caller must call releaseEcoTrace when the trace is no longer needed.
 func acquireEcoTrace() *EcoTrace {
 	return ecoTracePool.Get().(*EcoTrace)
 }
 
-// releaseEcoTrace reseta todos os campos e devolve ao pool.
-// Deve ser chamado após o TracePayload ser enfileirado (ou o drop ocorrer) —
-// nunca antes, pois o middleware ainda lê trace.CacheHit e trace.startAlloc.
+// releaseEcoTrace resets every field and returns the trace to the pool.
+// It must be called after TracePayload is enqueued or dropped, never before,
+// because middleware still reads trace.CacheHit and trace.startAlloc.
 func releaseEcoTrace(t *EcoTrace) {
-	// Reset explícito de cada campo — zero values corretos por tipo.
+	// Reset each field explicitly to the correct zero value.
 	t.startAlloc = 0
 	t.startTime = time.Time{}
 	t.CacheHit = false
@@ -46,15 +44,14 @@ func releaseEcoTrace(t *EcoTrace) {
 	ecoTracePool.Put(t)
 }
 
-// responseWriterPool reutiliza *responseWriter entre requests.
+// responseWriterPool reuses *responseWriter across requests.
 //
-// responseWriter é alocado uma vez por request (mesmo requests não amostradas
-// ainda precisam capturar o status code). Com o pool, essa alocação some
-// do hot path em ambos os casos.
+// responseWriter is allocated once per request because even unsampled requests
+// must capture the status code. The pool removes that hot-path allocation in
+// both cases.
 //
-// Invariante: status é resetado para http.StatusOK (o default correto)
-// antes de devolver ao pool — evita que o status de uma request anterior
-// vaze para a próxima.
+// Invariant: status is reset before returning to the pool so the status from a
+// previous request cannot leak into the next one.
 var responseWriterPool = sync.Pool{
 	New: func() any {
 		return &responseWriter{}
@@ -66,7 +63,7 @@ func acquireResponseWriter() *responseWriter {
 }
 
 func releaseResponseWriter(rw *responseWriter) {
-	rw.ResponseWriter = nil // libera a referência — GC pode coletar o writer original
+	rw.ResponseWriter = nil
 	rw.status = 0
 	rw.wroteHeader = false
 	responseWriterPool.Put(rw)

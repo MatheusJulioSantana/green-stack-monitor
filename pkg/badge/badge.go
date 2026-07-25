@@ -1,25 +1,4 @@
 // Package badge generates SVG shields for embedding in GitHub READMEs.
-//
-// Fluxo por request:
-//
-//	GET /badge
-//	    │
-//	    ├── Cache válido? ──── sim ──► SVG do cache
-//	    │       │                          │
-//	    │      não                         ▼
-//	    │       └──► co2Fn() + render() ──► atualiza cache
-//	    │                                   │
-//	    └───────────────────────────────────┘
-//	                                        │
-//	                          ETag == If-None-Match?
-//	                               │           │
-//	                              sim          não
-//	                               │           │
-//	                           304 (vazio)   200 + SVG
-//
-// O cliente (GitHub, browser) guarda o ETag e manda If-None-Match nas
-// requisições seguintes. Se o badge não mudou, recebe 304 sem body —
-// zero bytes transferidos, zero CPU de parsing no cliente.
 package badge
 
 import (
@@ -28,15 +7,7 @@ import (
 	"net/http"
 )
 
-// Handler retorna um http.HandlerFunc que serve o badge SVG com cache e ETag.
-//
-// Headers de resposta:
-//   - Content-Type: image/svg+xml
-//   - ETag: W/"<hash>" — permite revalidação eficiente pelo cliente
-//   - Cache-Control: public, max-age=<ttl>, stale-while-revalidate=<ttl*2>
-//     public: CDNs podem cachear (útil quando o badge está num README popular)
-//     stale-while-revalidate: cliente usa a versão velha enquanto busca a nova
-//   - X-Content-Type-Options: nosniff — defesa contra MIME sniffing
+// Handler serves the current badge SVG with ETag and Cache-Control headers.
 func Handler(c *Cache) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		svg, etag := c.SVGAndETag()
@@ -51,8 +22,6 @@ func Handler(c *Cache) http.HandlerFunc {
 		))
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 
-		// Se o cliente tem o mesmo ETag, o conteúdo não mudou.
-		// 304 sem body: economiza banda e CPU de parsing no cliente.
 		if r.Header.Get("If-None-Match") == etag {
 			w.WriteHeader(http.StatusNotModified)
 			return
@@ -63,32 +32,34 @@ func Handler(c *Cache) http.HandlerFunc {
 	}
 }
 
-// classify mapeia gramas de CO₂ por request para um label e cor de badge.
-//
-// Thresholds baseados na distribuição típica de APIs Go em cloud:
-//   - < 0.001 g: aplicação muito eficiente (poucos ms de CPU, cache agressivo)
-//   - < 0.01 g:  boa eficiência (operações simples sem I/O pesado)
-//   - < 0.1 g:   aceitável (queries moderadas, sem otimização agressiva)
-//   - ≥ 0.1 g:   investigar (possível N+1, ausência de cache, CPU intensivo)
-func classify(g float64) (label, color string) {
+// Canonical badge colors by efficiency tier.
+const (
+	ColorExcellent = "#44cc11" // < 0.001 g CO2/req
+	ColorGood      = "#97ca00" // < 0.01 g CO2/req
+	ColorFair      = "#dfb317" // < 0.1 g CO2/req
+	ColorPoor      = "#e05d44" // >= 0.1 g CO2/req
+)
+
+// Classify maps grams of CO2 per request to the badge label and color.
+func Classify(g float64) (label, color string) {
 	switch {
 	case g < 0.001:
-		return fmt.Sprintf("%.4f g CO₂/req", g), "#44cc11"
+		return fmt.Sprintf("%.4f g CO₂/req", g), ColorExcellent
 	case g < 0.01:
-		return fmt.Sprintf("%.3f g CO₂/req", g), "#97ca00"
+		return fmt.Sprintf("%.3f g CO₂/req", g), ColorGood
 	case g < 0.1:
-		return fmt.Sprintf("%.2f g CO₂/req", g), "#dfb317"
+		return fmt.Sprintf("%.2f g CO₂/req", g), ColorFair
 	default:
-		return fmt.Sprintf("%.2f g CO₂/req", math.Round(g*100)/100), "#e05d44"
+		return fmt.Sprintf("%.2f g CO₂/req", math.Round(g*100)/100), ColorPoor
 	}
 }
 
-// render produz um SVG no formato Shields.io flat badge.
-// Largura dinâmica para acomodar labels de tamanhos variados.
-// Chamado apenas no refresh do cache — nunca por request direta.
+func classify(g float64) (label, color string) { return Classify(g) }
+
+// render produces a Shields.io-compatible flat SVG badge.
 func render(label, color string) string {
 	const leftText = "carbon"
-	const lw = 58 // largura fixa do lado esquerdo ("carbon")
+	const lw = 58
 
 	rightText := label
 	rw := len(rightText)*7 + 10

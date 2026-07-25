@@ -49,10 +49,10 @@ type App struct {
 	SampleRate float64
 
 	// Worker dimensioning.
-	// WorkerBufferSize: capacidade do canal entre middleware e workers.
-	//   Regra: BufferSize >= peak_rps * avg_processing_ms / 1000
-	// WorkerCount: goroutines consumindo o canal.
-	//   Além de GOMAXPROCS raramente ajuda — gargalo costuma ser I/O.
+	// WorkerBufferSize: channel capacity between middleware and workers.
+	//   Rule: BufferSize >= peak_rps * avg_processing_ms / 1000
+	// WorkerCount: goroutines consuming the channel.
+	//   Going beyond GOMAXPROCS rarely helps; the bottleneck is usually I/O.
 	WorkerBufferSize int
 	WorkerCount      int
 }
@@ -73,8 +73,8 @@ func Load() (*App, error) {
 		RedisDB:       envInt("REDIS_DB", 0),
 
 		CO2: domain.CO2Config{
-			TDPWatts:                  envFloat("CO2_TDP_WATTS", 4.0),         // typical cloud vCPU share
-			PUE:                       envFloat("CO2_PUE", 1.2),               // hyperscaler average
+			TDPWatts:                  envFloat("CO2_TDP_WATTS", 4.0),          // typical cloud vCPU share
+			PUE:                       envFloat("CO2_PUE", 1.2),                // hyperscaler average
 			CarbonIntensityGCO2PerKWh: envFloat("CO2_CARBON_INTENSITY", 100.0), // BR grid average
 			MemoryWattsPerGB:          envFloat("CO2_MEMORY_WATTS_PER_GB", 0.375),
 		},

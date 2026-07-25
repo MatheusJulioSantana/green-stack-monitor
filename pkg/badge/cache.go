@@ -7,54 +7,54 @@ import (
 	"time"
 )
 
-// Cache mantém o SVG pré-renderizado e o ETag correspondente.
+// Cache stores the pre-rendered SVG and its matching ETag.
 //
-// Dois níveis de economia:
-//  1. TTL: enquanto o cache for válido, co2PerReqFn() e render() não são chamados.
-//     CPU e memória poupados em cada request ao /badge.
-//  2. ETag: se o SVG não mudou desde a última resposta ao cliente,
-//     respondemos 304 sem body — zero bytes transferidos.
+// Two savings layers:
+//  1. TTL: while the cache is valid, co2PerReqFn and render are not called.
+//     This saves CPU and memory on each /badge request.
+//  2. ETag: when the SVG has not changed since the last client response,
+//     the handler returns 304 without a body.
 //
-// Thread-safety: RWMutex porque leituras são muito mais frequentes que escritas.
-// Múltiplas goroutines leem o cache simultaneamente sem contenção.
-// A escrita (refresh) ocorre no máximo uma vez por TTL.
+// Thread safety: RWMutex keeps frequent reads cheap while refreshes remain exclusive.
+// Multiple goroutines can read the cache concurrently without blocking each other.
+// Refresh happens at most once per TTL window.
 //
-// Por que não usar sync/atomic para o SVG?
-// strings em Go são imutáveis mas não são tipos atômicos — trocar uma string
-// exige um ponteiro atômico (atomic.Pointer[string], Go 1.19+). RWMutex é
-// mais legível e o overhead de lock em leituras sem contenção é < 50 ns.
+// Why not sync/atomic for the SVG?
+// Go strings are immutable, but not atomic values. Swapping a string safely would
+// require an atomic pointer. RWMutex is more readable, and uncontended read locks
+// are cheap enough for this path.
 type Cache struct {
-	mu          sync.RWMutex
-	svg         string    // SVG pré-renderizado
-	etag        string    // SHA-256 truncado do SVG atual
-	renderedAt  time.Time // quando o cache foi gerado
-	ttl         time.Duration
+	mu         sync.RWMutex
+	svg        string    // pre-rendered SVG
+	etag       string    // truncated SHA-256 of the current SVG
+	renderedAt time.Time // when the cache was generated
+	ttl        time.Duration
 
-	co2Fn func() float64 // fonte de dados — injetada, não acoplada
+	co2Fn func() float64 // injected data source
 }
 
-// NewCache cria um Cache e pré-aquece com uma renderização inicial.
+// NewCache creates a Cache and warms it with an initial render.
 //
-// ttl recomendado:
-//   - 1–2 min: badge em README muito acessado
-//   - 5 min: dashboard interno
-//   - 30 s: desenvolvimento local
+// Recommended TTL:
+//   - 1-2 min: heavily accessed README badge
+//   - 5 min: internal dashboard
+//   - 30 s: local development
 //
-// co2PerReqFn é chamada apenas na renovação do cache, nunca por request.
+// co2PerReqFn is called only on cache refresh, never on each request.
 func NewCache(co2PerReqFn func() float64, ttl time.Duration) *Cache {
 	c := &Cache{
 		co2Fn: co2PerReqFn,
 		ttl:   ttl,
 	}
-	c.refresh() // aquece o cache na criação — sem cold start
+	c.refresh()
 	return c
 }
 
-// SVGAndETag retorna o SVG atual e seu ETag.
-// Se o cache estiver expirado, dispara um refresh antes de retornar.
-// Garante que a primeira request após expiração sempre recebe dados frescos.
+// SVGAndETag returns the current SVG and its ETag.
+// If the cache is expired, it refreshes before returning.
+// The first request after expiration always receives fresh data.
 func (c *Cache) SVGAndETag() (svg, etag string) {
-	// Fast path: leitura sem lock exclusivo.
+	// Fast path: read without exclusive locking.
 	c.mu.RLock()
 	expired := time.Since(c.renderedAt) >= c.ttl
 	if !expired {
@@ -64,34 +64,33 @@ func (c *Cache) SVGAndETag() (svg, etag string) {
 	}
 	c.mu.RUnlock()
 
-	// Cache expirado: precisa de lock exclusivo para refresh.
-	// Padrão check-lock-check: outro goroutine pode ter renovado enquanto
-	// esperávamos o lock — verificamos novamente antes de renderizar.
+	// Slow path: exclusive lock for refresh.
+	// Check-lock-check handles the case where another goroutine refreshed while
+	// this one was waiting for the lock.
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if time.Since(c.renderedAt) >= c.ttl {
-		c.refresh() // ainda expirado: renderiza agora
+		c.refresh()
 	}
 
 	return c.svg, c.etag
 }
 
-// TTL retorna o intervalo de renovação configurado.
+// TTL returns the configured refresh interval.
 func (c *Cache) TTL() time.Duration {
 	return c.ttl
 }
 
-// refresh renderiza o SVG e atualiza o ETag.
-// Deve ser chamado com o mutex de escrita já adquirido (ou durante a inicialização).
+// refresh renders the SVG and updates the ETag.
+// It must be called with the write mutex already held, or during initialization.
 func (c *Cache) refresh() {
 	g := c.co2Fn()
 	label, color := classify(g)
 	svg := render(label, color)
 
-	// ETag: primeiros 16 chars do SHA-256 do SVG.
-	// Suficiente para detectar qualquer mudança de conteúdo.
-	// Formato: W/"<hash>" — ETag fraco, semanticamente equivalente.
+	// ETag: first 16 hex chars of the SVG SHA-256.
+	// This is enough to detect content changes.
 	hash := sha256.Sum256([]byte(svg))
 	etag := fmt.Sprintf(`W/"%x"`, hash[:8])
 

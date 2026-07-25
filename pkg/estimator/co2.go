@@ -32,8 +32,8 @@ type Snapshot struct {
 // Estimator converts CPU and memory usage into a CO₂ estimate.
 type Estimator struct {
 	cfg           domain.CO2Config
-	totalCO2      uint64 // bits de float64 — total grams
-	savedCO2      uint64 // bits de float64 — saved grams
+	totalCO2      uint64 // float64 bits, total grams
+	savedCO2      uint64 // float64 bits, saved grams
 	totalRequests int64
 	cacheHits     int64
 }
@@ -90,33 +90,26 @@ const (
 	ErrInvalidCI  estimatorError = "CarbonIntensityGCO2PerKWh must be > 0"
 )
 
-// pkg/estimator/co2.go — versão corrigida com a struct real
-
-// Record registra o CO₂ de uma request de duração d.
-// cacheHit = true quando a resposta foi servida do cache.
-// Thread-safe via atomic operations.
+// Record stores the estimated CO2 cost for one request.
+// cacheHit should be true when the response was served from cache.
 func (e *Estimator) Record(d time.Duration, cacheHit bool) {
 	ms := float64(d.Milliseconds())
 	if ms < 0.001 {
-		ms = 0.001 // evita CO₂ = 0 em requests muito rápidas
+		ms = 0.001
 	}
 
-	// Fórmula Green Algorithms
 	co2 := ms * e.cfg.TDPWatts * e.cfg.PUE * e.cfg.CarbonIntensityGCO2PerKWh / 3_600_000
 
-	// Acumula totais
 	atomicAddFloat64(&e.totalCO2, co2)
 	atomic.AddInt64(&e.totalRequests, 1)
 
 	if cacheHit {
-		// Cache hit: salvamos o CO₂ que não seria emitido
 		atomicAddFloat64(&e.savedCO2, co2)
 		atomic.AddInt64(&e.cacheHits, 1)
 	}
 }
 
-// GetMetrics retorna um snapshot dos contadores.
-// Thread-safe — lê atomic values em um ponto no tempo.
+// GetMetrics returns a point-in-time snapshot of cache counters.
 func (e *Estimator) GetMetrics() (domain.CacheMetrics, error) {
 	saved := atomicReadFloat64(&e.savedCO2)
 	reqs := atomic.LoadInt64(&e.totalRequests)
@@ -150,10 +143,7 @@ func (e *Estimator) Snapshot() Snapshot {
 	}
 }
 
-// ─── internals ────────────────────────────────────────────────────────────────
-
-// atomicAddFloat64 usa CAS loop para somar em um float64 armazenado como uint64 bits.
-// Thread-safe, zero allocations.
+// atomicAddFloat64 adds to a float64 stored as uint64 bits.
 func atomicAddFloat64(addr *uint64, delta float64) {
 	for {
 		old := atomic.LoadUint64(addr)
@@ -165,7 +155,7 @@ func atomicAddFloat64(addr *uint64, delta float64) {
 	}
 }
 
-// atomicReadFloat64 lê um float64 armazenado como uint64 bits.
+// atomicReadFloat64 reads a float64 stored as uint64 bits.
 func atomicReadFloat64(addr *uint64) float64 {
 	return math.Float64frombits(atomic.LoadUint64(addr))
 }

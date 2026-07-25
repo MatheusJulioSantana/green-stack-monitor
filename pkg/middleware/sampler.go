@@ -5,28 +5,26 @@ import (
 	"sync/atomic"
 )
 
-// Sampler decide se uma request deve ser instrumentada.
+// Sampler decides whether a request should be instrumented.
 //
 // Design:
-//   - rate == 1.0  → instrumenta 100% (padrão, sem overhead de rand)
-//   - rate == 0.0  → nunca instrumenta (útil para desligar sem redeployar)
-//   - 0 < rate < 1 → amostragem proporcional
+//   - rate == 1.0  → instrument everything, no rand overhead
+//   - rate == 0.0  → instrument nothing, useful for disabling without redeploy
+//   - 0 < rate < 1 → proportional sampling
 //
-// math/rand/v2 (Go 1.22+) usa uma fonte por-goroutine internamente,
-// eliminando a necessidade de lock ou estado compartilhado.
-// Float64() é ~2 ns/op e zero alocações.
+// math/rand/v2 (Go 1.22+) uses an internal per-goroutine source, avoiding locks
+// or shared state. Float64 is ~2 ns/op and zero allocations.
 //
-// O campo dropped é um contador atômico exposto para o Prometheus saber
-// quantas requests foram intencionalmente ignoradas. Isso é importante:
-// sem ele, um SampleRate baixo pareceria "requests sumindo" nos logs.
+// dropped is an atomic counter exposed so Prometheus can tell how many requests
+// were intentionally skipped. Without it, a low SampleRate can look like
+// requests are disappearing from metrics.
 type Sampler struct {
 	rate    float64
 	dropped atomic.Uint64
 }
 
-// newSampler cria um Sampler. rate deve estar em [0.0, 1.0].
-// A validação já ocorreu no config.Load(), mas defensivamente retornamos
-// um sampler seguro para qualquer valor fora do range.
+// newSampler creates a Sampler. rate should be in [0.0, 1.0].
+// Config validation already happened, but this still clamps defensively.
 func newSampler(rate float64) *Sampler {
 	if rate < 0 {
 		rate = 0
@@ -37,10 +35,10 @@ func newSampler(rate float64) *Sampler {
 	return &Sampler{rate: rate}
 }
 
-// sample retorna true se esta request deve ser instrumentada.
-// É seguro chamar de múltiplas goroutines simultaneamente.
+// sample returns true when this request should be instrumented.
+// It is safe to call from multiple goroutines.
 func (s *Sampler) sample() bool {
-	// Fast path: evita a chamada ao rand completamente nos casos extremos.
+	// Fast path: avoid rand entirely for the two extremes.
 	if s.rate >= 1.0 {
 		return true
 	}
@@ -57,8 +55,7 @@ func (s *Sampler) sample() bool {
 	return false
 }
 
-// Dropped retorna o número acumulado de requests não instrumentadas.
-// Usado pelo Prometheus para expor green_sampler_dropped_total.
+// Dropped returns the accumulated number of non-instrumented requests.
 func (s *Sampler) Dropped() uint64 {
 	return s.dropped.Load()
 }
