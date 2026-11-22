@@ -40,7 +40,9 @@ small, bounded, and observable**.
 
 1. `sampler.sample()` — ~2 ns, zero allocs (fast path skips rand entirely).
 2. `acquireEcoTrace()` from `sync.Pool` — zero allocs in steady state.
-3. `runtime.ReadMemStats()` — stops the world for < 1 µs on Go 1.21+.
+3. `runtime.ReadMemStats()` — ~41-54 µs per call, zero allocs (measured with
+   `BenchmarkReadMemStats` on an i5-12450H; the call stops the world). The second
+   call, after the handler returns, runs in the worker, not on the request path.
 4. `context.WithValue` — one unavoidable alloc (interface boxing).
 5. `acquireResponseWriter()` from `sync.Pool` — zero allocs in steady state.
 6. `next.ServeHTTP`.
