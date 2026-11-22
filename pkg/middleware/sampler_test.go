@@ -61,12 +61,15 @@ func TestSampler_DroppedCounter_IsAccurate(t *testing.T) {
 	}
 }
 
+// boolSink keeps benchmark results alive so the compiler cannot elide the work.
+var boolSink bool
+
 func BenchmarkSampler_Float(b *testing.B) {
 	s := newSampler(0.5)
 	b.ReportAllocs()
 	b.ResetTimer()
-	for b.Loop() {
-		s.sample()
+	for range b.N {
+		boolSink = s.sample()
 	}
 }
 
@@ -74,7 +77,7 @@ func BenchmarkSampler_FastPath_Rate1(b *testing.B) {
 	s := newSampler(1.0)
 	b.ReportAllocs()
 	b.ResetTimer()
-	for b.Loop() {
-		s.sample()
+	for range b.N {
+		boolSink = s.sample()
 	}
 }

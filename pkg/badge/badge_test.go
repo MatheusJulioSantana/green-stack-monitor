@@ -259,7 +259,7 @@ func BenchmarkHandler_CacheHit(b *testing.B) {
 
 	b.ReportAllocs()
 	b.ResetTimer()
-	for b.Loop() {
+	for range b.N {
 		rr := httptest.NewRecorder()
 		h(rr, req)
 	}
@@ -281,7 +281,7 @@ func BenchmarkHandler_304(b *testing.B) {
 
 	b.ReportAllocs()
 	b.ResetTimer()
-	for b.Loop() {
+	for range b.N {
 		rr := httptest.NewRecorder()
 		h(rr, req)
 	}

@@ -200,7 +200,7 @@ func BenchmarkWorker_Throughput(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	ch := w.Chan()
-	for b.Loop() {
+	for range b.N {
 		ch <- payload
 	}
 	w.Stop()
