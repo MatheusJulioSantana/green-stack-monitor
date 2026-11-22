@@ -33,9 +33,9 @@ type RequestTrace struct {
 
 // CacheMetrics aggregates cache efficiency over a time window.
 type CacheMetrics struct {
-	Hits        uint64
-	Misses      uint64
-	TotalSaved  float64 // grams of CO₂ avoided by cache
+	Hits       uint64
+	Misses     uint64
+	TotalSaved float64 // grams of CO₂ avoided by cache
 }
 
 func (c CacheMetrics) HitRate() float64 {
