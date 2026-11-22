@@ -88,13 +88,16 @@ func abs(x float64) float64 {
 	return x
 }
 
+// floatSink keeps benchmark results alive so the compiler cannot elide the work.
+var floatSink float64
+
 // BenchmarkEstimateCPU confirms the estimator stays well under 100 ns/op.
 // If it ever exceeds that, we've accidentally added I/O or allocations.
 func BenchmarkEstimateCPU(b *testing.B) {
 	est, _ := estimator.New(referenceConfig)
 	b.ReportAllocs()
 	b.ResetTimer()
-	for b.Loop() {
-		_ = est.EstimateCPU(42.5)
+	for range b.N {
+		floatSink = est.EstimateCPU(42.5)
 	}
 }

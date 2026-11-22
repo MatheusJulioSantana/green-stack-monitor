@@ -255,7 +255,7 @@ func BenchmarkMiddleware_Rate1(b *testing.B) {
 	req := httptest.NewRequest(http.MethodGet, "/bench", nil)
 	b.ReportAllocs()
 	b.ResetTimer()
-	for b.Loop() {
+	for range b.N {
 		h.ServeHTTP(httptest.NewRecorder(), req)
 	}
 }
@@ -280,7 +280,7 @@ func BenchmarkMiddleware_Rate0(b *testing.B) {
 	req := httptest.NewRequest(http.MethodGet, "/bench", nil)
 	b.ReportAllocs()
 	b.ResetTimer()
-	for b.Loop() {
+	for range b.N {
 		h.ServeHTTP(httptest.NewRecorder(), req)
 	}
 }

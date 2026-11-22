@@ -121,7 +121,7 @@ func BenchmarkEcoTracePool_AcquireRelease(b *testing.B) {
 	now := time.Now()
 	b.ReportAllocs()
 	b.ResetTimer()
-	for b.Loop() {
+	for range b.N {
 		tr := acquireEcoTrace()
 		tr.startAlloc = 1024
 		tr.startTime = now
@@ -130,18 +130,21 @@ func BenchmarkEcoTracePool_AcquireRelease(b *testing.B) {
 	}
 }
 
+// traceSink keeps the allocated trace alive so the compiler cannot elide it.
+var traceSink *EcoTrace
+
 // BenchmarkEcoTraceAlloc measures direct *EcoTrace allocation cost.
 // It should be significantly slower than BenchmarkEcoTracePool.
 func BenchmarkEcoTraceAlloc(b *testing.B) {
 	now := time.Now()
 	b.ReportAllocs()
 	b.ResetTimer()
-	for b.Loop() {
+	for range b.N {
 		tr := &EcoTrace{
 			startAlloc: 1024,
 			startTime:  now,
 			sampled:    true,
 		}
-		_ = tr
+		traceSink = tr
 	}
 }
